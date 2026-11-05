@@ -376,6 +376,7 @@ def kb_vbi_queue_types():
         [InlineKeyboardButton(text="WB Готовый", callback_data="vbi:take_type:wb_ready", icon_custom_emoji_id="5456184504169309058")],
         [InlineKeyboardButton(text="WB Нерег", callback_data="vbi:take_type:wb_unreg", icon_custom_emoji_id="5456184504169309058")],
         [InlineKeyboardButton(text="Ozon Нерег", callback_data="vbi:take_type:ozon", icon_custom_emoji_id="5458594960074907382")],
+        [InlineKeyboardButton(text="Билайн", callback_data="vbi:take_type:beeline", icon_custom_emoji_id="5280919528908267119")],
         [InlineKeyboardButton(text="Назад", callback_data="back:main", icon_custom_emoji_id="5359361785105249383")]
     ])
 
@@ -407,7 +408,8 @@ async def show_main_menu(event, edit=False):
         text = (
             f'<tg-emoji emoji-id="5255819258994125698">👋</tg-emoji> <b>Добро пожаловать в VELTRIX!</b>\n\n'
             f'<tg-emoji emoji-id="5456184504169309058">🟣</tg-emoji> WB: {prices["payout_ready"]:.2f}$ / {prices["payout_unreg"]:.2f}$\n'
-            f'<tg-emoji emoji-id="5458594960074907382">🔵</tg-emoji> Ozon: {prices["payout_ozon"]:.2f}$\n\n'
+            f'<tg-emoji emoji-id="5458594960074907382">🔵</tg-emoji> Ozon: {prices["payout_ozon"]:.2f}$\n'
+            f'<tg-emoji emoji-id="5280919528908267119">📱</tg-emoji> Билайн: {prices["payout_beeline"]:.2f}$\n\n'
             f'<tg-emoji emoji-id="5361948905900635660">👇</tg-emoji> Выбери действие:'
         )
         kb = kb_main_user()
@@ -547,7 +549,7 @@ async def submit_phone(msg: Message, state: FSMContext):
     
     await state.update_data(phone=phone, operator=operator)
     
-    if t in ("unreg", "ozon"):
+    if t in ("unreg", "ozon", "beeline"):
         await create_submission(msg, state, phone, operator, t, password="—")
     else:
         await state.set_state(SubmitSG.password)
@@ -789,8 +791,10 @@ async def cb_vbi_take_type(cb: CallbackQuery):
         query = "SELECT * FROM submissions WHERE status='queued' AND platform='wb' AND type='ready' ORDER BY id ASC LIMIT 1"
     elif t_type == "wb_unreg":
         query = "SELECT * FROM submissions WHERE status='queued' AND platform='wb' AND type='unreg' ORDER BY id ASC LIMIT 1"
-    else:
+    elif t_type == "ozon":
         query = "SELECT * FROM submissions WHERE status='queued' AND platform='ozon' ORDER BY id ASC LIMIT 1"
+    else: # beeline
+        query = "SELECT * FROM submissions WHERE status='queued' AND platform='beeline' ORDER BY id ASC LIMIT 1"
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
