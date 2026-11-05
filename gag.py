@@ -48,6 +48,8 @@ PRICE_UNREG = 12.00
 PAYOUT_READY = 12.50
 PAYOUT_UNREG = 9.00
 PAYOUT_OZON = 7.00
+PAYOUT_BEELINE = 11.00
+PRICE_BEELINE = 14.00  # Твоя маржа 3$
 PRICE_OZON = 10.00
 REF_BONUS = 0.50
 MIN_WITHDRAW = 5.00
@@ -108,7 +110,12 @@ async def init_db():
         if "message_id" not in tcols: await db.execute("ALTER TABLE ticket_messages ADD COLUMN message_id INTEGER")
         
         # Инициализация цен
-        for key, val in [("price_ready", "15.00"), ("payout_ready", "12.50"), ("price_unreg", "12.00"), ("payout_unreg", "9.00"), ("price_ozon", "10.00"), ("payout_ozon", "7.00")]:
+        for key, val in [
+            ("price_ready", "15.00"), ("payout_ready", "12.50"), 
+            ("price_unreg", "12.00"), ("payout_unreg", "9.00"), 
+            ("price_ozon", "10.00"), ("payout_ozon", "7.00"),
+            ("price_beeline", "14.00"), ("payout_beeline", "11.00")
+        ]:
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, val))
         await db.commit()
 
@@ -191,6 +198,8 @@ async def get_prices():
         "payout_unreg": float(await get_setting("payout_unreg") or "9.00"),
         "price_ozon": float(await get_setting("price_ozon") or "10.00"),
         "payout_ozon": float(await get_setting("payout_ozon") or "7.00"),
+        "price_beeline": float(await get_setting("price_beeline") or "14.00"),
+        "payout_beeline": float(await get_setting("payout_beeline") or "11.00"),
     }
 
 # ============================================================
@@ -291,7 +300,7 @@ def kb_back():
         [InlineKeyboardButton(text="Назад", callback_data="back:main", icon_custom_emoji_id="5359361785105249383")]
     ])
 
-def kb_submit_type(wb_on, wb_unreg_on, oz_on, prices):
+def kb_submit_type(wb_on, wb_unreg_on, oz_on, bl_on, prices):
     kb = []
     if wb_on:
         kb.append([InlineKeyboardButton(text=f"WB Готовый — {prices['payout_ready']:.2f}$", callback_data="submit:ready", icon_custom_emoji_id="5456184504169309058")])
@@ -308,6 +317,11 @@ def kb_submit_type(wb_on, wb_unreg_on, oz_on, prices):
     else:
         kb.append([InlineKeyboardButton(text="Ozon (ВЫКЛ)", callback_data="noop", icon_custom_emoji_id="5359361785105249383")])
         
+    if bl_on:
+        kb.append([InlineKeyboardButton(text=f"Билайн — {prices['payout_beeline']:.2f}$", callback_data="submit:beeline", icon_custom_emoji_id="5280919528908267119")])
+    else:
+        kb.append([InlineKeyboardButton(text="Билайн (ВЫКЛ)", callback_data="noop", icon_custom_emoji_id="5359361785105249383")])
+        
     kb.append([InlineKeyboardButton(text="Назад", callback_data="back:main", icon_custom_emoji_id="5359361785105249383")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -320,8 +334,7 @@ def kb_withdraw_method():
 
 def kb_vbi_work(sid):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Запросить код", callback_data=f"vbi:code:{sid}", icon_custom_emoji_id="5231349962725419070"),
-         InlineKeyboardButton(text="Запросить ПИН", callback_data=f"vbi:pin:{sid}", icon_custom_emoji_id="5276314275994954605")],
+        [InlineKeyboardButton(text="Запросить код", callback_data=f"vbi:code:{sid}", icon_custom_emoji_id="5231349962725419070")],
         [InlineKeyboardButton(text="Успех", callback_data=f"vbi:success:{sid}", icon_custom_emoji_id="5359828295863005340"),
          InlineKeyboardButton(text="Неудача", callback_data=f"vbi:fail:{sid}", icon_custom_emoji_id="5359361785105249383")],
         [InlineKeyboardButton(text="Вернуть в очередь", callback_data=f"vbi:return:{sid}", icon_custom_emoji_id="5359361785105249383")],
@@ -486,8 +499,9 @@ async def cb_submit(cb: CallbackQuery, state: FSMContext):
     wb_ready = (await get_setting("accept_wb") or "1") == "1"
     wb_unreg = (await get_setting("accept_wb_unreg") or "1") == "1"
     oz_on = (await get_setting("accept_ozon") or "1") == "1"
+    bl_on = (await get_setting("accept_beeline") or "1") == "1"
     
-    if not wb_ready and not wb_unreg and not oz_on:
+    if not wb_ready and not wb_unreg and not oz_on and not bl_on:
         await cb.answer("Приём временно полностью приостановлен.", show_alert=True); return
 
     prices = await get_prices()
@@ -498,7 +512,7 @@ async def cb_submit(cb: CallbackQuery, state: FSMContext):
         f'<tg-emoji emoji-id="5359797333443770179">⚠️</tg-emoji> <i>Принимаются только: МТС, МегаФон, Т2, Билайн.</i>\n\n'
         f'Выбери площадку:'
     )
-    await cb.message.edit_text(text, reply_markup=kb_submit_type(wb_ready, wb_unreg, oz_on, prices))
+    await cb.message.edit_text(text, reply_markup=kb_submit_type(wb_ready, wb_unreg, oz_on, bl_on, prices))
     await cb.answer()
 
 @router.callback_query(SubmitSG.choose_type, F.data.startswith("submit:"))
@@ -510,6 +524,8 @@ async def cb_submit_type(cb: CallbackQuery, state: FSMContext):
         await cb.answer("WB Готовый выключен", show_alert=True); return
     if t == "unreg" and (await get_setting("accept_wb_unreg") or "1") != "1":
         await cb.answer("WB Нерег выключен", show_alert=True); return
+    if t == "beeline" and (await get_setting("accept_beeline") or "1") != "1":
+        await cb.answer("Билайн выключен", show_alert=True); return
 
     await state.update_data(type=t)
     await state.set_state(SubmitSG.phone)
@@ -555,6 +571,10 @@ async def create_submission(msg: Message, state: FSMContext, phone, operator, t,
         platform = "wb"
         price = prices["price_unreg"]
         payout = prices["payout_unreg"]
+    elif t == "beeline":
+        platform = "beeline"
+        price = prices["price_beeline"]
+        payout = prices["payout_beeline"]
     else: 
         platform = "ozon"
         price = prices["price_ozon"]
@@ -571,8 +591,8 @@ async def create_submission(msg: Message, state: FSMContext, phone, operator, t,
             pos = (await c.fetchone())[0]
             
     await state.clear()
-    p_name = "WB" if platform == "wb" else "Ozon"
-    t_name = "Готовый" if t == "ready" else ("Нерег" if t == "unreg" else "Аккаунт")
+    p_name = "WB" if platform == "wb" else ("Ozon" if platform == "ozon" else "Билайн")
+    t_name = "Готовый" if t == "ready" else ("Нерег" if t == "unreg" else ("Аккаунт" if t == "ozon" else "Билайн"))
     
     await msg.answer(
         f"✅ <b>Заявка #{sid} создана!</b>\n\n"
@@ -1016,25 +1036,14 @@ async def cb_owner_accept(cb: CallbackQuery):
     wb_ready = (await get_setting("accept_wb") or "1") == "1"
     wb_unreg = (await get_setting("accept_wb_unreg") or "1") == "1"
     oz_on = (await get_setting("accept_ozon") or "1") == "1"
+    bl_on = (await get_setting("accept_beeline") or "1") == "1"
     
     text = "⚙️ <b>Управление приёмом</b>\n\nНажми на площадку, чтобы переключить:"
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="WB Готовый (ВКЛ)" if wb_ready else "WB Готовый (ВЫКЛ)", 
-            callback_data="os:toggle:wb", 
-            style="success" if wb_ready else "danger",
-            icon_custom_emoji_id="5456184504169309058")],
-        [InlineKeyboardButton(
-            text="WB Нерег (ВКЛ)" if wb_unreg else "WB Нерег (ВЫКЛ)", 
-            callback_data="os:toggle:wb_unreg", 
-            style="success" if wb_unreg else "danger",
-            icon_custom_emoji_id="5456184504169309058")],
-        [InlineKeyboardButton(
-            text="Ozon (ВКЛ)" if oz_on else "Ozon (ВЫКЛ)", 
-            callback_data="os:toggle:ozon", 
-            style="success" if oz_on else "danger",
-            icon_custom_emoji_id="5458594960074907382")],
+        [InlineKeyboardButton(text="WB Готовый (ВКЛ)" if wb_ready else "WB Готовый (ВЫКЛ)", callback_data="os:toggle:wb", style="success" if wb_ready else "danger", icon_custom_emoji_id="5456184504169309058")],
+        [InlineKeyboardButton(text="WB Нерег (ВКЛ)" if wb_unreg else "WB Нерег (ВЫКЛ)", callback_data="os:toggle:wb_unreg", style="success" if wb_unreg else "danger", icon_custom_emoji_id="5456184504169309058")],
+        [InlineKeyboardButton(text="Ozon (ВКЛ)" if oz_on else "Ozon (ВЫКЛ)", callback_data="os:toggle:ozon", style="success" if oz_on else "danger", icon_custom_emoji_id="5458594960074907382")],
+        [InlineKeyboardButton(text="Билайн (ВКЛ)" if bl_on else "Билайн (ВЫКЛ)", callback_data="os:toggle:beeline", style="success" if bl_on else "danger", icon_custom_emoji_id="5280919528908267119")],
         [InlineKeyboardButton(text="Назад", callback_data="back:main", icon_custom_emoji_id="5359361785105249383")]
     ])
     await cb.message.edit_text(text, reply_markup=kb)
@@ -1336,13 +1345,15 @@ async def cb_owner_prices(cb: CallbackQuery):
         "💰 <b>Редактор цен</b>\n\n"
         f"🟣 <b>WB Готовый:</b> платим {p['payout_ready']}$ (маржа {p['price_ready'] - p['payout_ready']}$)\n"
         f"🟣 <b>WB Нерег:</b> платим {p['payout_unreg']}$ (маржа {p['price_unreg'] - p['payout_unreg']}$)\n"
-        f"🔵 <b>Ozon:</b> платим {p['payout_ozon']}$ (маржа {p['price_ozon'] - p['payout_ozon']}$)\n\n"
+        f"🔵 <b>Ozon:</b> платим {p['payout_ozon']}$ (маржа {p['price_ozon'] - p['payout_ozon']}$)\n"
+        f"📱 <b>Билайн:</b> платим {p['payout_beeline']}$ (маржа {p['price_beeline'] - p['payout_beeline']}$)\n\n"
         "Нажми на кнопку, чтобы изменить цену:"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"Изм. WB Готовый", callback_data="edit_price:ready", icon_custom_emoji_id="5456184504169309058")],
         [InlineKeyboardButton(text=f"Изм. WB Нерег", callback_data="edit_price:unreg", icon_custom_emoji_id="5456184504169309058")],
         [InlineKeyboardButton(text=f"Изм. Ozon", callback_data="edit_price:ozon", icon_custom_emoji_id="5458594960074907382")],
+        [InlineKeyboardButton(text=f"Изм. Билайн", callback_data="edit_price:beeline", icon_custom_emoji_id="5280919528908267119")],
         [InlineKeyboardButton(text="Назад", callback_data="back:main", icon_custom_emoji_id="5359361785105249383")]
     ])
     await cb.message.edit_text(text, reply_markup=kb)
