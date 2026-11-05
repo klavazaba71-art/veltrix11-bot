@@ -807,8 +807,19 @@ async def cb_vbi_take_type(cb: CallbackQuery):
         await db.execute("UPDATE submissions SET status='in_work', taker_id=? WHERE id=?", (cb.from_user.id, sub["id"]))
         await db.commit()
 
-    p_name = "WB" if sub["platform"] == "wb" else "Ozon"
-    t_name = "Готовый" if sub["type"] == "ready" else ("Нерег" if sub["type"] == "unreg" else "Аккаунт")
+    if sub["platform"] == "wb":
+        p_name = "WB"
+    elif sub["platform"] == "ozon":
+        p_name = "Ozon"
+    else:
+        p_name = "Билайн"
+        
+    if sub["type"] == "ready":
+        t_name = "Готовый"
+    elif sub["type"] == "unreg":
+        t_name = "Нерег"
+    else:
+        t_name = "Билайн"
     
     await cb.message.edit_text(
         f"📥 <b>Заявка #{sub['id']}</b>\n\n"
@@ -1025,8 +1036,12 @@ async def cb_owner_income(cb: CallbackQuery):
     for r in by_plat:
         m = r["m"] or 0
         total_margin += m
-        icon = "🟣" if r['platform'] == 'wb' else "🔵"
-        name = "WB" if r['platform'] == 'wb' else "Ozon"
+        if r['platform'] == 'wb':
+            icon, name = "🟣", "WB"
+        elif r['platform'] == 'ozon':
+            icon, name = "🔵", "Ozon"
+        else:
+            icon, name = "📱", "Билайн"
         text += f"{icon} <b>{name}:</b> {r['cnt']} сдач → <b>+{m:.2f}$</b>\n"
     text += f"\n🎁 <b>Реф-бонусы:</b> -{ref_bonuses:.2f}$\n"
     text += f"💎 <b>Чистая маржа:</b> <b>{total_margin - ref_bonuses:.2f}$</b>\n\n"
