@@ -1400,9 +1400,14 @@ scheduler.add_job(make_backup, "cron", hour=int(BACKUP_TIME.split(":")[0]), minu
 
 async def handle_webhook(request):
     try:
-        update = await request.json()
-        update_obj = dp.feed_update(bot, update)
-        await update_obj
+        # Получаем сырые данные
+        data = await request.json()
+        # Превращаем их в объект Update, который понимает aiogram
+        from aiogram.types import Update
+        update = Update.model_validate(data, context={"bot": bot})
+        
+        # Отправляем в диспетчер
+        await dp.feed_update(bot, update)
         return web.Response(text="OK")
     except Exception as e:
         log.error(f"Webhook error: {e}")
