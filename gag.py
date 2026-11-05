@@ -1430,13 +1430,11 @@ scheduler.add_job(make_backup, "cron", hour=int(BACKUP_TIME.split(":")[0]), minu
 
 async def handle_webhook(request):
     try:
-        # Получаем сырые данные
         data = await request.json()
-        # Превращаем их в объект Update, который понимает aiogram
         from aiogram.types import Update
+        # Вот эта строчка превращает dict в нормальный объект для aiogram
         update = Update.model_validate(data, context={"bot": bot})
         
-        # Отправляем в диспетчер
         await dp.feed_update(bot, update)
         return web.Response(text="OK")
     except Exception as e:
